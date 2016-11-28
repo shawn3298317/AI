@@ -58,6 +58,8 @@ def batch_generator(file_name, batch_size, shuffle, train_input=True):
 		else:
 			chunked_df = pd.read_csv(file_name, usecols=['ncodpers']+cols_to_use+numerical_cols, chunksize=batch_size)
 
+		chunked_df = chunked_df[chunked_df["fecha_alta"].isnull()==False]
+
 		nrows = 0
 		for chunk_df in chunked_df:
 			chunk_X = chunk_df[cols_to_use]
