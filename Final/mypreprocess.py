@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, KFold
+from sklearn.metrics import average_precision_score, roc_auc_score, fbeta_score, f1_score
 
 import time, datetime
 import math
@@ -33,24 +34,29 @@ mapping_dict = {
 #'ult_fec_cli_1t'
 }
 
-# categorical columns to use #
-cols_to_use = list(mapping_dict.keys())
-cols_to_use.append("fecha_dato")
-cols_to_use.append("ncodpers")
-cols_to_use.append("fecha_alta")
-cols_to_use.append("ult_fec_cli_1t")
-print'length of cols_to_use',len(cols_to_use)
+# dtype list for columns to be used for reading #
+dtype_list = {'ind_cco_fin_ult1': 'float16', 'ind_deme_fin_ult1': 'float16', 'ind_aval_fin_ult1': 'float16', 'ind_valo_fin_ult1': 'float16', 'ind_reca_fin_ult1': 'float16', 'ind_ctju_fin_ult1': 'float16', 'ind_cder_fin_ult1': 'float16', 'ind_plan_fin_ult1': 'float16', 'ind_fond_fin_ult1': 'float16', 'ind_hip_fin_ult1': 'float16', 'ind_pres_fin_ult1': 'float16', 'ind_nomina_ult1': 'float16', 'ind_cno_fin_ult1': 'float16', 'ncodpers': 'int64', 'ind_ctpp_fin_ult1': 'float16', 'ind_ahor_fin_ult1': 'float16', 'ind_dela_fin_ult1': 'float16', 'ind_ecue_fin_ult1': 'float16', 'ind_nom_pens_ult1': 'float16', 'ind_recibo_ult1': 'float16', 'ind_deco_fin_ult1': 'float16', 'ind_tjcr_fin_ult1': 'float16', 'ind_ctop_fin_ult1': 'float16', 'ind_viv_fin_ult1': 'float16', 'ind_ctma_fin_ult1': 'float16'}
 
 # target columns to predict #
 target_cols = ['ind_ahor_fin_ult1','ind_aval_fin_ult1','ind_cco_fin_ult1','ind_cder_fin_ult1','ind_cno_fin_ult1','ind_ctju_fin_ult1','ind_ctma_fin_ult1','ind_ctop_fin_ult1','ind_ctpp_fin_ult1','ind_deco_fin_ult1','ind_deme_fin_ult1','ind_dela_fin_ult1','ind_ecue_fin_ult1','ind_fond_fin_ult1','ind_hip_fin_ult1','ind_plan_fin_ult1','ind_pres_fin_ult1','ind_reca_fin_ult1','ind_tjcr_fin_ult1','ind_valo_fin_ult1','ind_viv_fin_ult1','ind_nomina_ult1','ind_nom_pens_ult1','ind_recibo_ult1']
+print 'length of target_cols', len(target_cols)
+
+# numerical columns to use #
+numerical_cols = ['age', 'antiguedad', 'renta', 'ncodpers']
+
+# categorical columns to use #
+cols_to_use = list(mapping_dict.keys())
+#print'length of categorical cols_to_use',len(cols_to_use)
+
 
 # read csv include first line
-data_train = pd.read_csv("./data/month1_625457.csv")
+data_train = pd.read_csv("./data/month1_625457.csv",dtype=dtype_list)
 #data_test = pd.read_csv("./data/test_ver2.csv")
 
 # remove those whose fecha_alta is NaN!!!
 data_train = data_train[data_train["fecha_alta"].isnull()==False]
 #data_test = data_test[data_test["fecha_alta"].isnull()==False]
+
 
 # fix continuous column
 data_train.antiguedad = pd.to_numeric(data_train.antiguedad,errors="coerce")
@@ -72,29 +78,89 @@ data_train["fecha_alta"] = data_train["fecha_alta"].apply(timestrToStamp)
 data_train["fecha_dato"] = data_train["fecha_dato"].apply(timestrToStamp)
 data_train["ult_fec_cli_1t"] = data_train["ult_fec_cli_1t"].apply(timestrToStamp)
 
-x_train = data_train[cols_to_use].values
-label_train = data_train[target_cols].values
+# categorical value
+for col_ind, col in enumerate(cols_to_use):
+    data_train[col] = data_train[col].fillna(-99)
+    data_train[col] = data_train[col].apply(lambda x: mapping_dict[col][x])
 
-param = {'max_depth':3, 'eta':1, 'silent':1, 'objective':'multi:softprob'}
-num_round = 10
-plst = param.items()
+cols_to_use.append("fecha_dato")
+#cols_to_use.append("ncodpers")
+cols_to_use.append("fecha_alta")
+cols_to_use.append("ult_fec_cli_1t")
+x_train = data_train[cols_to_use+numerical_cols].values
+#y_df = data_train[target_cols+['ncodpers']]
+#newy_df = y_df.drop_duplicates('ncodpers', keep='last')
+label_df = data_train[target_cols].fillna(0)
+label_train = label_df.values
 
-skf = StratifiedKFold(n_splits=3)
+x_train = x_train.astype('float32')
+label_train = label_train.astype('float32')
+
+del data_train
+
+#Model
+xgb_params = {
+    'seed': 0,
+    'colsample_bytree': 0.7,
+    'silent': 1,
+    'subsample': 0.5,
+    'learning_rate': 0.1,
+    'objective': 'binary:logistic',
+    'max_depth': 10,
+    'min_child_weight': 100,
+    'booster': 'gbtree',
+    'eval_metric': 'logloss',
+    'n_thread': '8'
+    }
+num_round = 100
+
+pred_vals = []
+
+skf = KFold(n_splits=3)
 #CV ing
 corr=np.array([])
 print ('running cross validation')
-for train_index, test_index in skf.split(x_train,label_train):
-    dtrain = xgb.DMatrix(x_train[train_index], label=label_train[train_index])
-    dtest = xgb.DMatrix(x_train[test_index],label=label_train[test_index])
-    watchlist = [(dtest,'eval'),(dtrain,'train')]
-    bst = xgb.train(param,dtrain,num_round,watchlist)
-    preds = bst.predict(dtest)
-    labels = dtest.get_label()
-    total = np.shape(labels)[0]
-    preds[preds>0.5]=1
-    preds[preds<=0.5]=0
-    cor =  (total-sum(abs(preds-labels)))/total
-    print 'Corr = %0.6f' % cor
-    corr=np.append(corr,cor)
+for ind, col in enumerate(label_train.T):
+
+    fold_preds = []
+    fold_test = []
+    print ('Running on index ',ind)
+'''
+    for train_index, test_index in skf.split(x_train,label_train):
+
+        y_train, y_val = col[train_index], col[test_index]
+
+        dtrain = xgb.DMatrix(x_train[train_index], label=y_train)
+        dval = xgb.DMatrix(x_train[test_index],label=y_val)
+
+        watchlist = [(dval,'eval'),(dtrain,'train')]
+
+        bst = xgb.train(xgb_params,dtrain,num_round,watchlist,early_stopping_rounds=50, verbose_eval=False)
+        single_pred_val = bst.predict(dval)
+
+        fold_preds.append(single_pred_val)
+
+    pred_vals.append(fold_preds)
+'''
+pred_val_array = np.asarray(pred_vals)
+
+means = []
+for i in preds_a:
+    j = np.mean(i, axis = 0)
+    means.append(j)
+
+means_b = np.asarray(means).T
+ROC = roc_auc_score(y_val2, means_b)
+means_b[means_b >= 0.5] = 1
+means_b[means_b < 0.5] = 0
+F1 = f1_score(y_val2, means_b, average = "macro")
+
+print ('\n', "F1 score: ", F1, "ROC AUC score: ", ROC)
+    #labels = dval.get_label()
+    #total = np.shape(labels)[0]
+    #preds[preds>0.5]=1
+    #preds[preds<=0.5]=0
+    #cor =  (total-sum(abs(preds-labels)))/total
+    #print 'Corr = %0.6f' % cor
+    #corr=np.append(corr,cor)
     #print ('error=%f' % ( sum(1 for i in range(len(preds)) if int(preds[i]>0.5)!=labels[i]) /float(len(preds))))
-print 'Mean Precision is %0.6f' %np.mean(corr) 
