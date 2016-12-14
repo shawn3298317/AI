@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.model_selection import StratifiedKFold, KFold
 from sklearn.metrics import average_precision_score, roc_auc_score, fbeta_score, f1_score
+import sys
 
 import time, datetime
 import math
@@ -94,7 +95,7 @@ label_df = data_train[target_cols].fillna(0)
 label_train = label_df.values
 
 x_train = x_train.astype('float32')
-label_train = label_train.astype('float32')
+label_train = label_train.astype('int')
 
 del data_train
 
@@ -104,10 +105,10 @@ xgb_params = {
     'colsample_bytree': 0.7,
     'silent': 1,
     'subsample': 0.5,
-    'learning_rate': 0.1,
+    #'learning_rate': 0.1,
     'objective': 'binary:logistic',
     'max_depth': 10,
-    'min_child_weight': 100,
+    #'min_child_weight': 100,
     'booster': 'gbtree',
     'eval_metric': 'logloss',
     'n_thread': '8'
@@ -119,14 +120,19 @@ pred_vals = []
 skf = KFold(n_splits=3)
 #CV ing
 corr=np.array([])
-print ('running cross validation')
-for ind, col in enumerate(label_train.T):
+print ('Running cross validation')
+sys.stdout.flush()
+ind = 1
+F1 = []
+for train_index, test_index in skf.split(x_train,label_train):
 
     fold_preds = []
     fold_test = []
-    print ('Running on index ',ind)
-'''
-    for train_index, test_index in skf.split(x_train,label_train):
+    print ('  Running on portion ',ind)
+    sys.stdout.flush()
+
+    # for every product build a separate classifier
+    for ind, col in enumerate(label_train.T):
 
         y_train, y_val = col[train_index], col[test_index]
 
@@ -136,26 +142,26 @@ for ind, col in enumerate(label_train.T):
         watchlist = [(dval,'eval'),(dtrain,'train')]
 
         bst = xgb.train(xgb_params,dtrain,num_round,watchlist,early_stopping_rounds=50, verbose_eval=False)
+        # 1/splits, 
         single_pred_val = bst.predict(dval)
-
+        # 24, 1/splits
         fold_preds.append(single_pred_val)
+    label_split = label_train[test_index] # total/splits, 24
+    fold_preds = np.array(fold_preds).T
+    #oneROC = roc_auc_score(label_split, fold_preds)
+    fold_preds[fold_preds >= 0.5] = 1
+    fold_preds[fold_preds < 0.5 ] = 0
+    oneF1 = f1_score(label_split, fold_preds, average = "macro")
+    print ('\n', "  F1 score: ", oneF1)
+    sys.stdout.flush()
+    ind += 1
+    F1.append(oneF1)
+    if ind == 2:
+        break
+    #ROC.append(oneROC)
 
-    pred_vals.append(fold_preds)
-'''
-pred_val_array = np.asarray(pred_vals)
-
-means = []
-for i in preds_a:
-    j = np.mean(i, axis = 0)
-    means.append(j)
-
-means_b = np.asarray(means).T
-ROC = roc_auc_score(y_val2, means_b)
-means_b[means_b >= 0.5] = 1
-means_b[means_b < 0.5] = 0
-F1 = f1_score(y_val2, means_b, average = "macro")
-
-print ('\n', "F1 score: ", F1, "ROC AUC score: ", ROC)
+print ('\n', "Average F1 score: ", np.mean(F1))
+sys.stdout.flush()
     #labels = dval.get_label()
     #total = np.shape(labels)[0]
     #preds[preds>0.5]=1
