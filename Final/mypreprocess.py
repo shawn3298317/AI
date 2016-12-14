@@ -13,6 +13,8 @@ import time, datetime
 import math
 import argparse
 
+from operator import itemgetter
+
 from preprocess import batch_generator
 
 parser = argparse.ArgumentParser()
@@ -103,7 +105,7 @@ label_train = label_df.values
 x_train = x_train.astype('float32')
 label_train = label_train.astype('int')
 
-del data_train
+#del data_train
 
 #Model
 xgb_params = {
@@ -156,6 +158,12 @@ for train_index, test_index in skf.split(x_train,label_train):
         single_pred_val = bst.predict(dval)
         # 24, total/splits
         fold_preds.append(single_pred_val)
+        bst.feature_names = cols_to_use+numerical_cols
+        output_file = './model/XGBmodel_month'+str(args.month)+'product'+str(ind+1)
+        print 'Saving model ', output_file
+        bst.save_model(output_file)
+        #print bst.get_score()
+        print sorted(bst.get_score().items(), key=itemgetter(1), reverse=True)
     label_split = label_train[test_index] # total/splits, 24
     fold_preds = np.array(fold_preds).T
     #oneROC = roc_auc_score(label_split, fold_preds)
@@ -170,9 +178,4 @@ for train_index, test_index in skf.split(x_train,label_train):
 print ('\n', "Average F1 score: ", np.mean(F1))
 sys.stdout.flush()
 
-#save model
-output_file = './model/XGBmodel_month'+str(args.month)
-print 'Saving models to ', output_file
-bst.save_model(open(output_file,'w'))
-print bst.get_score()
 
