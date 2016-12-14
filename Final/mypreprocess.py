@@ -11,8 +11,15 @@ import sys
 
 import time, datetime
 import math
+import argparse
 
 from preprocess import batch_generator
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-month", type=int, default=1, choices=range(18))
+parser.add_argument("-num_round", type=int, default=100)
+parser.add_argument("-early_stop", type=int, default=30)
+args = parser.parse_args()
 
 # mapping dict to map the categories to numerical values #
 mapping_dict = {
@@ -46,12 +53,11 @@ print 'length of target_cols', len(target_cols)
 numerical_cols = ['age', 'antiguedad', 'renta', 'ncodpers']
 
 # categorical columns to use #
-cols_to_use = list(mapping_dict.keys())
-#print'length of categorical cols_to_use',len(cols_to_use)
-
+cols_to_use = mapping_dict.keys()
 
 # read csv include first line
-data_train = pd.read_csv("./data/month1_625457.csv",dtype=dtype_list)
+print 'Reading month ', args.month
+data_train = pd.read_csv("./data/month"+str(args.month)+".csv",dtype=dtype_list)
 #data_test = pd.read_csv("./data/test_ver2.csv")
 
 # remove those whose fecha_alta is NaN!!!
@@ -113,7 +119,7 @@ xgb_params = {
     'eval_metric': 'logloss',
     'n_thread': '8'
     }
-num_round = 100
+num_round = args.num_round
 print 'XGB params'
 print xgb_params
 print 'Num rounds ', num_round
@@ -145,7 +151,7 @@ for train_index, test_index in skf.split(x_train,label_train):
 
         watchlist = [(dval,'eval'),(dtrain,'train')]
 
-        bst = xgb.train(xgb_params,dtrain,num_round,watchlist,early_stopping_rounds=30, verbose_eval=False)
+        bst = xgb.train(xgb_params,dtrain,num_round,watchlist,early_stopping_rounds=args.early_stop, verbose_eval=False)
         # total/splits, 
         single_pred_val = bst.predict(dval)
         # 24, total/splits
@@ -163,4 +169,10 @@ for train_index, test_index in skf.split(x_train,label_train):
 
 print ('\n', "Average F1 score: ", np.mean(F1))
 sys.stdout.flush()
+
+#save model
+output_file = './model/XGBmodel_month'+str(args.month)
+print 'Saving models to ', output_file
+bst.save_model(open(output_file,'w'))
+print bst.get_score()
 

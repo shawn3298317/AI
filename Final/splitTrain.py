@@ -15,7 +15,7 @@ for i,num in enumerate(month_total):
     index = range(start, start + num)
     index.append(0)
     whatlines = set(index)
-    file_out = open("data/month"+str(i+1)+"_"+str(num)+".csv",'w')
+    file_out = open("data/month"+str(i+1)+".csv",'w')
     for lines in yieldlines(file_in, whatlines):
         file_out.write(lines)
     file_in.close()
