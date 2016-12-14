@@ -114,6 +114,10 @@ xgb_params = {
     'n_thread': '8'
     }
 num_round = 100
+print 'XGB params'
+print xgb_params
+print 'Num rounds ', num_round
+
 
 pred_vals = []
 
@@ -122,13 +126,13 @@ skf = KFold(n_splits=3)
 corr=np.array([])
 print ('Running cross validation')
 sys.stdout.flush()
-ind = 1
+portion = 1
 F1 = []
 for train_index, test_index in skf.split(x_train,label_train):
 
     fold_preds = []
     fold_test = []
-    print ('  Running on portion ',ind)
+    print ('  Running on portion ',portion)
     sys.stdout.flush()
 
     # for every product build a separate classifier
@@ -141,10 +145,10 @@ for train_index, test_index in skf.split(x_train,label_train):
 
         watchlist = [(dval,'eval'),(dtrain,'train')]
 
-        bst = xgb.train(xgb_params,dtrain,num_round,watchlist,early_stopping_rounds=50, verbose_eval=False)
-        # 1/splits, 
+        bst = xgb.train(xgb_params,dtrain,num_round,watchlist,early_stopping_rounds=30, verbose_eval=False)
+        # total/splits, 
         single_pred_val = bst.predict(dval)
-        # 24, 1/splits
+        # 24, total/splits
         fold_preds.append(single_pred_val)
     label_split = label_train[test_index] # total/splits, 24
     fold_preds = np.array(fold_preds).T
@@ -152,21 +156,11 @@ for train_index, test_index in skf.split(x_train,label_train):
     fold_preds[fold_preds >= 0.5] = 1
     fold_preds[fold_preds < 0.5 ] = 0
     oneF1 = f1_score(label_split, fold_preds, average = "macro")
-    print ('\n', "  F1 score: ", oneF1)
+    print "  F1 score: ", oneF1
     sys.stdout.flush()
-    ind += 1
+    portion += 1
     F1.append(oneF1)
-    if ind == 2:
-        break
-    #ROC.append(oneROC)
 
 print ('\n', "Average F1 score: ", np.mean(F1))
 sys.stdout.flush()
-    #labels = dval.get_label()
-    #total = np.shape(labels)[0]
-    #preds[preds>0.5]=1
-    #preds[preds<=0.5]=0
-    #cor =  (total-sum(abs(preds-labels)))/total
-    #print 'Corr = %0.6f' % cor
-    #corr=np.append(corr,cor)
-    #print ('error=%f' % ( sum(1 for i in range(len(preds)) if int(preds[i]>0.5)!=labels[i]) /float(len(preds))))
+
