@@ -8,6 +8,8 @@ from keras.layers.core import Dense, Activation, Merge, Reshape, Dropout
 from keras.layers.embeddings import Embedding
 from keras.optimizers import SGD
 from keras.layers.normalization import BatchNormalization
+from keras.callbacks import History 
+history = History()
 
 np.random.seed(12345)
 
@@ -106,7 +108,7 @@ def batch_generator(file_name, batch_size, shuffle, train_input=True):
 				if train_input:
 					y = y[shuffle_index,:]
 			if train_input:
-				print X, nrows
+				#print X, nrows
 				yield X, y
 			else:
 				yield X
@@ -137,10 +139,12 @@ if __name__ == "__main__":
 	model = keras_model()
 	print("Model fit..")
 	fit= model.fit_generator(
-			generator = batch_generator(train, 500000, False), 
-			nb_epoch = 1,
-			samples_per_epoch = train_size
+			generator = batch_generator(train, 5000, False), 
+			nb_epoch = 5,
+			samples_per_epoch = train_size,
+			callbacks=[history]
 		)
+	print "HISTORY", (history.History)
 	preds = model.predict_generator(generator=batch_generator(test, 10000, False, False), val_samples=test_size)
 	print("Predictions : ", preds.shape)
 	
