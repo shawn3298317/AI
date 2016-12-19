@@ -3,23 +3,17 @@
 import xgboost as xgb
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from sklearn.model_selection import StratifiedKFold, KFold
-from sklearn.metrics import average_precision_score, roc_auc_score, fbeta_score, f1_score
+from sklearn.model_selection import KFold
+from sklearn.metrics import average_precision_score, fbeta_score, f1_score
 import sys
 
 import time, datetime
 import math
 import argparse
 
-from operator import itemgetter
-
-from preprocess import batch_generator
-
 parser = argparse.ArgumentParser()
-parser.add_argument("-month", type=int, default=6, choices=range(18))
-parser.add_argument("-num_round", type=int, default=100)
+#parser.add_argument("-month", type=int, default=1, choices=range(18))
+parser.add_argument("-num_round", type=int, default=50)
 parser.add_argument("-early_stop", type=int, default=30)
 args = parser.parse_args()
 
@@ -49,6 +43,8 @@ dtype_list = {'ind_cco_fin_ult1': 'float16', 'ind_deme_fin_ult1': 'float16', 'in
 
 # target columns to predict #
 target_cols = ['ind_ahor_fin_ult1','ind_aval_fin_ult1','ind_cco_fin_ult1','ind_cder_fin_ult1','ind_cno_fin_ult1','ind_ctju_fin_ult1','ind_ctma_fin_ult1','ind_ctop_fin_ult1','ind_ctpp_fin_ult1','ind_deco_fin_ult1','ind_deme_fin_ult1','ind_dela_fin_ult1','ind_ecue_fin_ult1','ind_fond_fin_ult1','ind_hip_fin_ult1','ind_plan_fin_ult1','ind_pres_fin_ult1','ind_reca_fin_ult1','ind_tjcr_fin_ult1','ind_valo_fin_ult1','ind_viv_fin_ult1','ind_nomina_ult1','ind_nom_pens_ult1','ind_recibo_ult1']
+# 1219
+target_cols = target_cols[2:]
 print 'length of target_cols', len(target_cols)
 
 # numerical columns to use #
@@ -57,23 +53,11 @@ numerical_cols = ['age', 'antiguedad', 'renta', 'ncodpers']
 # categorical columns to use #
 cols_to_use = mapping_dict.keys()
 
-# read csv include first line
-print 'Reading month ', args.month
-data_train = pd.read_csv("./data/month"+str(args.month)+".csv",dtype=dtype_list)
-#data_test = pd.read_csv("./data/test_ver2.csv")
+# hsieh add
+hsieh_cols = ['fecha_dato','fecha_alta','ult_fec_cli_1t']
 
-# remove those whose fecha_alta is NaN!!!
-data_train = data_train[data_train["fecha_alta"].isnull()==False]
-#data_test = data_test[data_test["fecha_alta"].isnull()==False]
-
-
-# fix continuous column
-data_train.antiguedad = pd.to_numeric(data_train.antiguedad,errors="coerce")
-data_train.age = pd.to_numeric(data_train.age,errors="coerce")
-data_train.renta = pd.to_numeric(data_train.renta,errors="coerce")
-
-# fix missing value
-data_train.loc[data_train["ult_fec_cli_1t"].isnull()==True, "ult_fec_cli_1t"] = data_train["ult_fec_cli_1t"].mode()[0]
+total_use_cols = cols_to_use+numerical_cols+hsieh_cols
+#total_use_cols = cols_to_use+numerical_cols
 
 # transfer time to POSIX
 def timestrToStamp(element):
@@ -82,110 +66,117 @@ def timestrToStamp(element):
     else:
         return "FUCK"
 
-# tran time columns
-data_train["fecha_alta"] = data_train["fecha_alta"].apply(timestrToStamp)
-data_train["fecha_dato"] = data_train["fecha_dato"].apply(timestrToStamp)
-data_train["ult_fec_cli_1t"] = data_train["ult_fec_cli_1t"].apply(timestrToStamp)
-# categorical value
-for col_ind, col in enumerate(cols_to_use):
-    data_train[col] = data_train[col].fillna(-99)
-    data_train[col] = data_train[col].apply(lambda x: mapping_dict[col][x])
+def myloadData(filepath, dtype_list, mapping_dict):
+    print "Loading and processing ", filepath
+    # read csv include first line
+    data = pd.read_csv(filepath, dtype = dtype_list)
+    # remove those whose fecha_alta is NaN!!!
+    data = data[ data["fecha_alta"].isnull()==False ]
+    # fix continuous column
+    data.antiguedad = pd.to_numeric(data.antiguedad,errors="coerce")
+    data.age = pd.to_numeric(data.age,errors="coerce")
+    data.renta = pd.to_numeric(data.renta,errors="coerce")
+    # fix missing value
+    data.loc[data["ult_fec_cli_1t"].isnull()==True, "ult_fec_cli_1t"] = data["ult_fec_cli_1t"].mode()[0]
+    
+    # tran time columns
+    data["fecha_alta"] = data["fecha_alta"].apply(timestrToStamp)
+    data["fecha_dato"] = data["fecha_dato"].apply(timestrToStamp)
+    data["ult_fec_cli_1t"] = data["ult_fec_cli_1t"].apply(timestrToStamp)
+    
+    # categorical value
+    for col_ind, col in enumerate(cols_to_use):
+        data[col] = data[col].fillna(-99)
+        data[col] = data[col].apply(lambda x: mapping_dict[col][x])
+    data_train = data[total_use_cols].values
+    label_df = data[target_cols].fillna(0)
+    label_train = label_df.values
 
+    data_train = data_train.astype('float32')
+    label_train = label_train.astype('int')
 
-cols_to_use.append("fecha_dato")
-#cols_to_use.append("ncodpers")
-cols_to_use.append("fecha_alta")
-cols_to_use.append("ult_fec_cli_1t")
-x_train = data_train[cols_to_use+numerical_cols].values
-#y_df = data_train[target_cols+['ncodpers']]
-#newy_df = y_df.drop_duplicates('ncodpers', keep='last')
-label_df = data_train[target_cols].fillna(0)
-label_train = label_df.values
+    #print len(data)
+    #print len(np.unique(data['ncodpers'].values))
+    #print len(data_train)
+    del data
+    print "Processing done"
+    return data_train, label_train
 
-x_train = x_train.astype('float32')
-label_train = label_train.astype('int')
+# take pre month and now month to compute what did they newly buy this month
+# each column has only one newly buy products!!
+def lessIsMore(data_old, label_old, data_new, label_new):
+    print "Less is More running..."
+    # cols_to_use has 16, ncodpers is the 20th feature
+    cus_id = data_new[:, 19]
+    old_cus_id = set(data_old[:, 19])
+    old_cus_dict = dict( (x, k) for (k, x) in enumerate(data_old[:, 19]) )
+    new_buy_data =  []
+    new_buy_label = []
+    for i,cus in enumerate(cus_id):
+       target_list = np.nonzero(label_new[i,:])[0]
+       if cus in old_cus_id:
+            new_products = [max(x1-x2,0) for (x1,x2) in zip(label_new[i,:], label_old[old_cus_dict[cus],:])]
+            if sum(new_products) > 0:
+                for j, prod in enumerate(new_products):
+                    if prod>0:
+                        new_buy_data.append(data_new[i,:])
+                        new_buy_label.append(j)
+       else:
+            for buy in target_list:
+                new_buy_data.append(data_new[i,:])
+                new_buy_label.append(buy)
+    new_buy_data = np.array(new_buy_data)
+    new_buy_label = np.array(new_buy_label)
+    print "Less is More finished..."
+    print "Total buy cus : ", len(np.unique(new_buy_data[:,19]))
+    print "Total buy product : ", len(new_buy_label)
+    return new_buy_data, new_buy_label
 
-ppap
-#del data_train
+data_1, label_1 = myloadData("./data/month5.csv", dtype_list, mapping_dict)
+data_2, label_2 = myloadData("./data/month6.csv", dtype_list, mapping_dict)
+
+new_data, new_label = lessIsMore(data_1, label_1, data_2, label_2)
+
+del data_1, label_1, data_2, label_2
+
+print np.unique(new_label)
 
 #Model
 xgb_params = {
     'seed': 0,
     'colsample_bytree': 0.7,
     'silent': 1,
-    'subsample': 0.5,
+    'subsample': 0.7,
     #'learning_rate': 0.1,
-    'objective': 'binary:logistic',
-    'max_depth': 10,
+    'objective': 'multi:softprob',
+    'max_depth': 8,
     #'min_child_weight': 100,
     'booster': 'gbtree',
-    'eval_metric': 'logloss',
-    'n_thread': '8'
+    'eval_metric': 'mlogloss',
+    'n_thread': 8,
+    'num_class': 22
     }
 num_round = args.num_round
 print 'XGB params'
 print xgb_params
 print 'Num rounds ', num_round
 
+scores = []
+skf = KFold(n_splits=10)
+for train_index, val_index in skf.split(new_data, new_label):
+    # cross-valid
+    y_train, y_val  = new_label[train_index], new_label[val_index]
 
-pred_vals = []
+    dtrain = xgb.DMatrix(new_data[train_index], label = y_train)
+    dval = xgb.DMatrix(new_data[val_index],label = y_val)
 
-skf = KFold(n_splits=3)
-#CV ing
-corr=np.array([])
-print ('Running cross validation')
-sys.stdout.flush()
-portion = 1
-F1 = []
-for train_index, test_index in skf.split(x_train,label_train):
+    watchlist = [(dval,'eval'),(dtrain,'train')]
 
-    fold_preds = []
-    fold_test = []
-    print ('  Running on portion ',portion)
-    sys.stdout.flush()
+    bst = xgb.train(xgb_params, dtrain, num_round, watchlist)
 
-    # for every product build a separate classifier
-    for ind, col in enumerate(label_train.T):
-
-        y_train, y_val = col[train_index], col[test_index]
-
-        dtrain = xgb.DMatrix(x_train[train_index], label=y_train)
-        dval = xgb.DMatrix(x_train[test_index],label=y_val)
-
-        watchlist = [(dval,'eval'),(dtrain,'train')]
-
-        bst = xgb.train(xgb_params,dtrain,num_round,watchlist,early_stopping_rounds=args.early_stop, verbose_eval=False)
-        # total/splits, 
-        single_pred_val = bst.predict(dval)
-        single_pred = bst.predict(dtrain)
-        # 24, total/splits
-        fold_preds.append(single_pred_val)
-        bst.feature_names = cols_to_use+numerical_cols
-        #output_file = './model/XGBmodel_month'+str(args.month)+'product'+str(ind+1)
-        #print 'Saving model ', output_file
-        #bst.save_model(output_file)
-        #print bst.get_score()
-        #print sorted(bst.get_score().items(), key=itemgetter(1), reverse=True)
-        qqaq_val = single_pred_val
-        qqaq_val[qqaq_val>=0.5] =1
-        qqaq_val[qqaq_val<0.5] =0
-        qqaq = single_pred
-        qqaq[qqaq>=0.5] =1
-        qqaq[qqaq<0.5] =0
-        print '    F1 of train of product ', ind+1, ' is ', f1_score(y_train, qqaq)
-        print '    F1 of val of product ', ind+1, ' is ', f1_score(y_val, qqaq_val)
-    label_split = label_train[test_index] # total/splits, 24
-    fold_preds = np.array(fold_preds).T
-    #oneROC = roc_auc_score(label_split, fold_preds)
-    fold_preds[fold_preds >= 0.5] = 1
-    fold_preds[fold_preds < 0.5 ] = 0
-    oneF1 = f1_score(label_split, fold_preds, average = "macro")
-    print "  F1 score: ", oneF1
-    sys.stdout.flush()
-    portion += 1
-    F1.append(oneF1)
-
-print ('\n', "Average F1 score: ", np.mean(F1))
-sys.stdout.flush()
-
+    scores.append(float(bst.eval(dval).split(':')[1]))
+    #out_file = './model/XGBmodel_lessIsMore'
+    #save model
+    #bst.save_model(out_file)
+print 'Average score ', np.mean(scores)
 
