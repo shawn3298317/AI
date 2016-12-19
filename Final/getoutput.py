@@ -11,11 +11,11 @@ import time, datetime
 import math
 import argparse
 
-parser = argparse.ArgumentParser()
-#parser.add_argument("-month", type=int, default=1, choices=range(18))
-parser.add_argument("-num_round", type=int, default=25)
-parser.add_argument("-early_stop", type=int, default=30)
-args = parser.parse_args()
+#parser = argparse.ArgumentParser()
+#parser.add_argument("-model", type=str, required=True)
+#parser.add_argument("-outfile", type=str, required=True)
+#args = parser.parse_args()
+
 
 # mapping dict to map the categories to numerical values #
 mapping_dict = {
@@ -48,14 +48,13 @@ target_cols = target_cols[2:]
 print 'length of target_cols', len(target_cols)
 
 # numerical columns to use #
-numerical_cols = ['age', 'antiguedad', 'renta']
+numerical_cols = ['age', 'antiguedad', 'renta', 'ncodpers']
 
 # categorical columns to use #
 cols_to_use = mapping_dict.keys()
 
 # hsieh add
-hsieh_cols = ['ncodpers','fecha_dato','fecha_alta','ult_fec_cli_1t']
-hsieh_cols = ['ncodpers','fecha_alta','ult_fec_cli_1t']
+hsieh_cols = ['fecha_dato','fecha_alta','ult_fec_cli_1t']
 
 total_use_cols = cols_to_use+numerical_cols+hsieh_cols
 #total_use_cols = cols_to_use+numerical_cols
@@ -67,7 +66,7 @@ def timestrToStamp(element):
     else:
         return "FUCK"
 
-def myloadData(filepath, dtype_list, mapping_dict):
+def myloadData(filepath, dtype_list, mapping_dict, needLabel=True):
     print "Loading and processing ", filepath
     # read csv include first line
     data = pd.read_csv(filepath, dtype = dtype_list)
@@ -77,13 +76,12 @@ def myloadData(filepath, dtype_list, mapping_dict):
     data.antiguedad = pd.to_numeric(data.antiguedad,errors="coerce")
     data.age = pd.to_numeric(data.age,errors="coerce")
     data.renta = pd.to_numeric(data.renta,errors="coerce")
-    data[numerical_cols] = data[numerical_cols].apply(lambda x: (x - x.mean())/(x.max() - x.min()) )
     # fix missing value
     data.loc[data["ult_fec_cli_1t"].isnull()==True, "ult_fec_cli_1t"] = data["ult_fec_cli_1t"].mode()[0]
     
     # tran time columns
     data["fecha_alta"] = data["fecha_alta"].apply(timestrToStamp)
-    #data["fecha_dato"] = data["fecha_dato"].apply(timestrToStamp)
+    data["fecha_dato"] = data["fecha_dato"].apply(timestrToStamp)
     data["ult_fec_cli_1t"] = data["ult_fec_cli_1t"].apply(timestrToStamp)
     
     # categorical value
@@ -91,17 +89,20 @@ def myloadData(filepath, dtype_list, mapping_dict):
         data[col] = data[col].fillna(-99)
         data[col] = data[col].apply(lambda x: mapping_dict[col][x])
     data_train = data[total_use_cols].values
-    label_df = data[target_cols].fillna(0)
-    label_train = label_df.values
+    if needLabel == True:
+        label_df = data[target_cols].fillna(0)
+        label_train = label_df.values
+        label_train = label_train.astype('int')
 
     data_train = data_train.astype('float32')
-    label_train = label_train.astype('int')
 
     #print len(data)
     #print len(np.unique(data['ncodpers'].values))
     #print len(data_train)
     del data
     print "Processing done"
+    if needLabel == False:
+        return data_train
     return data_train, label_train
 
 # take pre month and now month to compute what did they newly buy this month
@@ -134,57 +135,21 @@ def lessIsMore(data_old, label_old, data_new, label_new):
     print "Total buy product : ", len(new_buy_label)
     return new_buy_data, new_buy_label
 
-data_1, label_1 = myloadData("./data/month5.csv", dtype_list, mapping_dict)
-data_2, label_2 = myloadData("./data/month6.csv", dtype_list, mapping_dict)
+data_1 = myloadData("./data/test_ver2.csv", dtype_list, mapping_dict, False)
+d_test = xgb.DMatrix(data_1)
 
-new_data, new_label = lessIsMore(data_1, label_1, data_2, label_2)
+bst = xgb.Booster()
+#bst.load_model(args.model)
+bst.load_model("./model/XGBmodel_lessIsMore")
+preds = bst.predict(d_test)
 
-del data_1, label_1, data_2, label_2
+print("Getting the top products..")
+target_cols = np.array(target_cols)
+preds = np.argsort(preds, axis=1)
+preds = np.fliplr(preds)[:,:7]
+test_id = np.array(pd.read_csv("./data/test_ver2.csv", usecols=['ncodpers'])['ncodpers'])
+final_preds = [" ".join(list(target_cols[pred])) for pred in preds]
+out_df = pd.DataFrame({'ncodpers':test_id, 'added_products':final_preds})
+#out_df.to_csv(args.outfile, index=False)
+out_df.to_csv("ppap", index=False)
 
-print np.unique(new_label)
-
-#Model
-xgb_params = {
-    'seed': 0,
-    'colsample_bytree': 0.7,
-    'silent': 1,
-    'subsample': 0.7,
-    #'learning_rate': 0.1,
-    'objective': 'multi:softprob',
-    'max_depth': 8,
-    #'min_child_weight': 100,
-    'booster': 'gbtree',
-    'eval_metric': 'mlogloss',
-    'n_thread': 8,
-    'num_class': 22
-    }
-num_round = args.num_round
-print 'XGB params'
-print xgb_params
-print 'Num rounds ', num_round
-
-scores = []
-skf = KFold(n_splits=10)
-for train_index, val_index in skf.split(new_data, new_label):
-    # cross-valid
-    y_train, y_val  = new_label[train_index], new_label[val_index]
-
-    dtrain = xgb.DMatrix(new_data[train_index], label = y_train)
-    dval = xgb.DMatrix(new_data[val_index],label = y_val)
-
-    watchlist = [(dval,'eval'),(dtrain,'train')]
-
-    bst = xgb.train(xgb_params, dtrain, num_round, watchlist)
-
-    scores.append(float(bst.eval(dval).split(':')[1]))
-    #out_file = './model/XGBmodel_lessIsMore'
-    #save model
-    #bst.save_model(out_file)
-print 'Average score ', np.mean(scores)
-'''
-dtotal = xgb.DMatrix(new_data, label=new_label)
-bst = xgb.train(xgb_params, dtotal, num_round)
-print 'Score ', float(bst.eval(dtotal).split(':')[1])
-out_file = './model/XGBmodel_lessIsMore'
-bst.save_model(out_file)
-'''
