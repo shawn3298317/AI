@@ -85,7 +85,7 @@ def myloadData(filepath, dtype_list, mapping_dict):
     # transform renta
     for rent_keys in renta_dict.keys():
         cond = data.nomprov == rent_keys
-        data.renta[cond] = data.renta[cond].fillna(renta_dict[renta_keys])
+        data.renta[cond] = data.renta[cond].fillna(renta_dict[rent_keys])
     data.renta = pd.to_numeric(data.renta,errors="coerce")
     data[numerical_cols] = data[numerical_cols].apply(lambda x: (x - x.mean())/(x.max() - x.min()) )
     data.renta.fillna(renta_dict['UNKNOWN'])
