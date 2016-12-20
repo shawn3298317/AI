@@ -11,11 +11,13 @@ import time, datetime
 import math
 import argparse
 
-#parser = argparse.ArgumentParser()
-#parser.add_argument("-model", type=str, required=True)
-#parser.add_argument("-outfile", type=str, required=True)
-#args = parser.parse_args()
+from my_utils import count_MAP_total, map7eval
 
+parser = argparse.ArgumentParser()
+#parser.add_argument("-month", type=int, default=1, choices=range(18))
+parser.add_argument("-num_round", type=int, default=50)
+parser.add_argument("-early_stop", type=int, default=30)
+args = parser.parse_args()
 
 # mapping dict to map the categories to numerical values #
 mapping_dict = {
@@ -23,7 +25,7 @@ mapping_dict = {
 'sexo' 			: {'V':0, 'H':1, -99:2},
 'ind_nuevo' 	: {0.0:0, 1.0:1, -99.0:2},
 'indrel'		: {1.0:0, 99.0:1, -99.0:2},
-'indrel_1mes'	: {-99:0, '1.0':1, '1':1, '2.0':2, '2':2, '3.0':3, '3':3, '4.0':4, '4':4, 'P':5},
+'indrel_1mes'	: {-99:0, 1.0:1, 1:1, 2.0:2, 2:2, 3.0:3, 3:3, 4.0:4, 4:4, 'P':5},
 'tiprel_1mes'	: {-99:0, 'I':1, 'A':2, 'P':3, 'R':4, 'N':5},
 'indresi'		: {-99:0, 'S':1, 'N':2},
 'indext'		: {-99:0, 'S':1, 'N':2},
@@ -39,7 +41,7 @@ mapping_dict = {
 }
 
 # dtype list for columns to be used for reading #
-dtype_list = {'ind_cco_fin_ult1': 'float16', 'ind_deme_fin_ult1': 'float16', 'ind_aval_fin_ult1': 'float16', 'ind_valo_fin_ult1': 'float16', 'ind_reca_fin_ult1': 'float16', 'ind_ctju_fin_ult1': 'float16', 'ind_cder_fin_ult1': 'float16', 'ind_plan_fin_ult1': 'float16', 'ind_fond_fin_ult1': 'float16', 'ind_hip_fin_ult1': 'float16', 'ind_pres_fin_ult1': 'float16', 'ind_nomina_ult1': 'float16', 'ind_cno_fin_ult1': 'float16', 'ncodpers': 'int64', 'ind_ctpp_fin_ult1': 'float16', 'ind_ahor_fin_ult1': 'float16', 'ind_dela_fin_ult1': 'float16', 'ind_ecue_fin_ult1': 'float16', 'ind_nom_pens_ult1': 'float16', 'ind_recibo_ult1': 'float16', 'ind_deco_fin_ult1': 'float16', 'ind_tjcr_fin_ult1': 'float16', 'ind_ctop_fin_ult1': 'float16', 'ind_viv_fin_ult1': 'float16', 'ind_ctma_fin_ult1': 'float16', 'indrel_1mes': str}
+dtype_list = {'ind_cco_fin_ult1': 'float16', 'ind_deme_fin_ult1': 'float16', 'ind_aval_fin_ult1': 'float16', 'ind_valo_fin_ult1': 'float16', 'ind_reca_fin_ult1': 'float16', 'ind_ctju_fin_ult1': 'float16', 'ind_cder_fin_ult1': 'float16', 'ind_plan_fin_ult1': 'float16', 'ind_fond_fin_ult1': 'float16', 'ind_hip_fin_ult1': 'float16', 'ind_pres_fin_ult1': 'float16', 'ind_nomina_ult1': 'float16', 'ind_cno_fin_ult1': 'float16', 'ncodpers': 'int64', 'ind_ctpp_fin_ult1': 'float16', 'ind_ahor_fin_ult1': 'float16', 'ind_dela_fin_ult1': 'float16', 'ind_ecue_fin_ult1': 'float16', 'ind_nom_pens_ult1': 'float16', 'ind_recibo_ult1': 'float16', 'ind_deco_fin_ult1': 'float16', 'ind_tjcr_fin_ult1': 'float16', 'ind_ctop_fin_ult1': 'float16', 'ind_viv_fin_ult1': 'float16', 'ind_ctma_fin_ult1': 'float16'}
 
 # target columns to predict #
 target_cols = ['ind_ahor_fin_ult1','ind_aval_fin_ult1','ind_cco_fin_ult1','ind_cder_fin_ult1','ind_cno_fin_ult1','ind_ctju_fin_ult1','ind_ctma_fin_ult1','ind_ctop_fin_ult1','ind_ctpp_fin_ult1','ind_deco_fin_ult1','ind_deme_fin_ult1','ind_dela_fin_ult1','ind_ecue_fin_ult1','ind_fond_fin_ult1','ind_hip_fin_ult1','ind_plan_fin_ult1','ind_pres_fin_ult1','ind_reca_fin_ult1','ind_tjcr_fin_ult1','ind_valo_fin_ult1','ind_viv_fin_ult1','ind_nomina_ult1','ind_nom_pens_ult1','ind_recibo_ult1']
@@ -68,7 +70,7 @@ def timestrToStamp(element):
     else:
         return "FUCK"
 
-def myloadData(filepath, dtype_list, mapping_dict, needLabel=True):
+def myloadData(filepath, dtype_list, mapping_dict):
     print "Loading and processing ", filepath
     # read csv include first line
     data = pd.read_csv(filepath, dtype = dtype_list)
@@ -78,7 +80,7 @@ def myloadData(filepath, dtype_list, mapping_dict, needLabel=True):
     data.antiguedad = pd.to_numeric(data.antiguedad,errors="coerce")
     data.age = pd.to_numeric(data.age,errors="coerce")
     data.renta = pd.to_numeric(data.renta,errors="coerce")
-    data[numerical_cols] = data[numerical_cols].apply(lambda x: (x - x.mean())/(x.max() - x.min()) )
+    data[numerical_cols] = data[numerical_cols].apply(lambda x: (x - x.mean())/(x.std(ddof=0)) )
     data[numerical_cols].fillna(data[numerical_cols].mean())
     # fix missing value
     data.loc[data["ult_fec_cli_1t"].isnull()==True, "ult_fec_cli_1t"] = data["ult_fec_cli_1t"].mode()[0]
@@ -87,67 +89,108 @@ def myloadData(filepath, dtype_list, mapping_dict, needLabel=True):
     data["fecha_alta"] = data["fecha_alta"].apply(timestrToStamp)
     #data["fecha_dato"] = data["fecha_dato"].apply(timestrToStamp)
     data["ult_fec_cli_1t"] = data["ult_fec_cli_1t"].apply(timestrToStamp)
-    data[time_cols] = data[time_cols].apply(lambda x: ( x - x.mean() )/( x.max()-x.min() ) )
+    data[time_cols] = data[time_cols].apply(lambda x: ( x - x.mean() )/( x.std(ddof=0) ) )
     
     # categorical value
     for col_ind, col in enumerate(cols_to_use):
         data[col] = data[col].fillna(-99)
         data[col] = data[col].apply(lambda x: mapping_dict[col][x])
     data_train = data[total_use_cols].values
-    if needLabel == True:
-        label_df = data[target_cols].fillna(0)
-        label_train = label_df.values
-        label_train = label_train.astype('int')
+    label_df = data[target_cols].fillna(0)
+    label_train = label_df.values
 
     data_train = data_train.astype('float32')
+    label_train = label_train.astype('int')
 
-    #print len(data)
+    print data[numerical_cols].isnull().values.any()
     #print len(np.unique(data['ncodpers'].values))
     #print len(data_train)
     del data
     print "Processing done"
-    if needLabel == False:
-        return data_train
     return data_train, label_train
 
 # take pre month and now month to compute what did they newly buy this month
 # each column has only one newly buy products!!
-def lessIsMore(data_old, label_old, data_new):
+def lessIsMore(data_old, label_old, data_new, label_new):
     print "Less is More running..."
     # cols_to_use has 16, ncodpers is the 20th feature
     cus_id = data_new[:, 19]
     old_cus_id = set(data_old[:, 19])
     old_cus_dict = dict( (x, k) for (k, x) in enumerate(data_old[:, 19]) )
     new_buy_data =  []
+    new_buy_label = []
     for i,cus in enumerate(cus_id):
+       target_list = np.nonzero(label_new[i,:])[0]
        if cus in old_cus_id:
             prev_products = label_old[old_cus_dict[cus], :]
-            new_buy_data.append(np.append(data_new[i,:], prev_products))
+            new_products = [max(x1-x2,0) for (x1,x2) in zip(label_new[i,:], label_old[old_cus_dict[cus],:])]
+            if sum(new_products) > 0:
+                for j, prod in enumerate(new_products):
+                    if prod>0:
+                        new_buy_data.append(np.append(data_new[i,:], prev_products))
+                        new_buy_label.append(j)
+       else:
+            for buy in target_list:
+                new_buy_data.append(np.append(data_new[i,:], [0]*len(target_cols)))
+                new_buy_label.append(buy)
     new_buy_data = np.array(new_buy_data)
+    new_buy_label = np.array(new_buy_label)
     print "Less is More finished..."
-    #print "Total buy cus : ", len(np.unique(new_buy_data[:,19]))
-    #print "Total buy product : ", len(new_buy_label)
-    return new_buy_data
+    print "Total buy cus : ", len(np.unique(new_buy_data[:,19]))
+    print "Total buy product : ", len(new_buy_label)
+    return new_buy_data, new_buy_label
 
-data_1, label_1 = myloadData("./data/month17.csv", dtype_list, mapping_dict)
-data_2 = myloadData("./data/test_ver2.csv", dtype_list, mapping_dict, False)
+data_1, label_1 = myloadData("./data/month5.csv", dtype_list, mapping_dict)
+data_2, label_2 = myloadData("./data/month6.csv", dtype_list, mapping_dict)
 
-new_data = lessIsMore(data_1, label_1, data_2)
+new_data, new_label = lessIsMore(data_1, label_1, data_2, label_2)
 
-d_test = xgb.DMatrix(new_data)
+del data_1, label_1, data_2, label_2
 
-bst = xgb.Booster()
-#bst.load_model(args.model)
-bst.load_model("./model/XGBmodel_lessIsMore")
-preds = bst.predict(d_test)
+print np.unique(new_label)
 
-print("Getting the top products..")
-target_cols = np.array(target_cols)
-preds = np.argsort(preds, axis=1)
-preds = np.fliplr(preds)[:,:7]
-test_id = np.array(pd.read_csv("./data/test_ver2.csv", usecols=['ncodpers'])['ncodpers'])
-final_preds = [" ".join(list(target_cols[pred])) for pred in preds]
-out_df = pd.DataFrame({'ncodpers':test_id, 'added_products':final_preds})
-#out_df.to_csv(args.outfile, index=False)
-out_df.to_csv("ppap", index=False)
+#Model
+xgb_params = {
+    'seed': 0,
+    'colsample_bytree': 0.7,
+    'silent': 1,
+    'subsample': 0.7,
+    'learning_rate': 0.1,
+    'objective': 'multi:softprob',
+    'max_depth': 8,
+    #'min_child_weight': 100,
+    'booster': 'gbtree',
+    'eval_metric': 'mlogloss',
+    'n_thread': 8,
+    'num_class': 22
+    }
+num_round = args.num_round
+print 'XGB params'
+print xgb_params
+print 'Num rounds ', num_round
 
+scores = []
+skf = KFold(n_splits=10)
+for train_index, val_index in skf.split(new_data, new_label):
+    # cross-valid
+    y_train, y_val  = new_label[train_index], new_label[val_index]
+
+    dtrain = xgb.DMatrix(new_data[train_index], label = y_train)
+    dval = xgb.DMatrix(new_data[val_index],label = y_val)
+
+    watchlist = [(dval,'eval'),(dtrain,'train')]
+
+    bst = xgb.train(xgb_params, dtrain, num_round, watchlist, feval=map7eval, maximize=True ,early_stopping_rounds=args.early_stop)
+
+    scores.append(float(bst.eval(dval).split(':')[1]))
+    #out_file = './model/XGBmodel_lessIsMore'
+    #save model
+    #bst.save_model(out_file)
+print 'Average score ', np.mean(scores)
+'''
+dtotal = xgb.DMatrix(new_data, label=new_label)
+bst = xgb.train(xgb_params, dtotal, num_round)
+print 'Score ', float(bst.eval(dtotal).split(':')[1])
+out_file = './model/XGBmodel_lessIsMore'
+bst.save_model(out_file)
+'''

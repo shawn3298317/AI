@@ -152,6 +152,7 @@ def runXGB(train_X, train_y, seed_val=0):
 	plst = list(param.items())
 	xgtrain = xgb.DMatrix(train_X, label=train_y)
 	model = xgb.train(plst, xgtrain, num_rounds)	
+	print 'Score on train set ', float(model.eval(xgtrain).split(':')[1])
 	return model
 
 
@@ -164,16 +165,16 @@ if __name__ == "__main__":
 	train_y = np.array(y_vars_list)
 	print(np.unique(train_y))
         print len(cust_dict)
-	#del x_vars_list, y_vars_list
+	del x_vars_list, y_vars_list
 	train_file.close()
 	print(train_X.shape, train_y.shape)
 	print(datetime.datetime.now()-start_time)
-	#test_file = open(data_path + "test_ver2.csv")
-	#x_vars_list, y_vars_list, cust_dict = processData(test_file, cust_dict)
-	#test_X = np.array(x_vars_list)
-	#del x_vars_list
-	#test_file.close()
-	#print(test_X.shape)
+	test_file = open(data_path + "test_ver2.csv")
+	x_vars_list, y_vars_list, cust_dict = processData(test_file, cust_dict)
+	test_X = np.array(x_vars_list)
+	del x_vars_list
+	test_file.close()
+	print(test_X.shape)
 	print(datetime.datetime.now()-start_time)
 
 	ppap
