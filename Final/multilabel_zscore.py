@@ -128,10 +128,12 @@ def myloadData(filepath, dtype_list, mapping_dict):
 # each column has only one newly buy products!!
 def lessIsMore(data_old, label_old, data_new, label_new):
     print "Less is More running..."
-    # cols_to_use has 16, ncodpers is the 20th feature
-    cus_id = data_new[:, 19]
-    old_cus_id = set(data_old[:, 19])
-    old_cus_dict = dict( (x, k) for (k, x) in enumerate(data_old[:, 19]) )
+    # cols_to_use has 14, ncodpers is the 18th feature
+    ncodpers_pos = len(cols_to_use)+len(numerical_cols)
+    print 'Ncodpers is at ', ncodpers_pos
+    cus_id = data_new[:, ncodpers_pos]
+    old_cus_id = set(data_old[:, ncodpers_pos])
+    old_cus_dict = dict( (x, k) for (k, x) in enumerate(data_old[:, ncodpers_pos]) )
     new_buy_data =  []
     new_buy_label = []
     for i,cus in enumerate(cus_id):
@@ -151,7 +153,7 @@ def lessIsMore(data_old, label_old, data_new, label_new):
     new_buy_data = np.array(new_buy_data)
     new_buy_label = np.array(new_buy_label)
     print "Less is More finished..."
-    print "Total buy cus : ", len(np.unique(new_buy_data[:,19]))
+    print "Total buy cus : ", len(np.unique(new_buy_data[:,ncodpers_pos]))
     print "Total buy product : ", len(new_buy_label)
     return new_buy_data, new_buy_label
 
@@ -205,6 +207,6 @@ print 'Average score ', np.mean(scores)
 dtotal = xgb.DMatrix(new_data, label=new_label)
 bst = xgb.train(xgb_params, dtotal, num_round)
 print 'Score ', float(bst.eval(dtotal).split(':')[1])
-out_file = './model/XGBmodel_lessIsMore'
+out_file = './model/XGBmodel_lessIsMore_1220_1132'
 bst.save_model(out_file)
 '''
