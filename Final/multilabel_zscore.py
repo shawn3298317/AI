@@ -40,8 +40,11 @@ mapping_dict = {
 #'ult_fec_cli_1t'
 }
 
+# renta dict
+renta_dict = {'ALBACETE': 76895,  'ALICANTE': 60562,  'ALMERIA': 77815,  'ASTURIAS': 83995,  'AVILA': 78525,  'BADAJOZ': 60155,  'BALEARS, ILLES': 114223,  'BARCELONA': 135149,  'BURGOS': 87410, 'NAVARRA' : 101850, 'CACERES': 78691,  'CADIZ': 75397,  'CANTABRIA': 87142,  'CASTELLON': 70359,  'CEUTA': 333283, 'CIUDAD REAL': 61962,  'CORDOBA': 63260,  'CORUÑA, A': 103567,  'CUENCA': 70751,  'GIRONA': 100208,  'GRANADA': 80489, 'GUADALAJARA': 100635,  'HUELVA': 75534,  'HUESCA': 80324,  'JAEN': 67016,  'LEON': 76339,  'LERIDA': 59191,  'LUGO': 68219,  'MADRID': 141381,  'MALAGA': 89534,  'MELILLA': 116469, 'GIPUZKOA': 101850, 'MURCIA': 68713,  'OURENSE': 78776,  'PALENCIA': 90843,  'PALMAS, LAS': 78168,  'PONTEVEDRA': 94328,  'RIOJA, LA': 91545,  'SALAMANCA': 88738,  'SANTA CRUZ DE TENERIFE': 83383, 'ALAVA': 101850, 'BIZKAIA' : 101850, 'SEGOVIA': 81287,  'SEVILLA': 94814,  'SORIA': 71615,  'TARRAGONA': 81330,  'TERUEL': 64053,  'TOLEDO': 65242,  'UNKNOWN': 103689,  'VALENCIA': 73463,  'VALLADOLID': 92032,  'ZAMORA': 73727,  'ZARAGOZA': 98827}
+
 # dtype list for columns to be used for reading #
-dtype_list = {'ind_cco_fin_ult1': 'float16', 'ind_deme_fin_ult1': 'float16', 'ind_aval_fin_ult1': 'float16', 'ind_valo_fin_ult1': 'float16', 'ind_reca_fin_ult1': 'float16', 'ind_ctju_fin_ult1': 'float16', 'ind_cder_fin_ult1': 'float16', 'ind_plan_fin_ult1': 'float16', 'ind_fond_fin_ult1': 'float16', 'ind_hip_fin_ult1': 'float16', 'ind_pres_fin_ult1': 'float16', 'ind_nomina_ult1': 'float16', 'ind_cno_fin_ult1': 'float16', 'ncodpers': 'int64', 'ind_ctpp_fin_ult1': 'float16', 'ind_ahor_fin_ult1': 'float16', 'ind_dela_fin_ult1': 'float16', 'ind_ecue_fin_ult1': 'float16', 'ind_nom_pens_ult1': 'float16', 'ind_recibo_ult1': 'float16', 'ind_deco_fin_ult1': 'float16', 'ind_tjcr_fin_ult1': 'float16', 'ind_ctop_fin_ult1': 'float16', 'ind_viv_fin_ult1': 'float16', 'ind_ctma_fin_ult1': 'float16'}
+dtype_list = {'ind_cco_fin_ult1': 'float16', 'ind_deme_fin_ult1': 'float16', 'ind_aval_fin_ult1': 'float16', 'ind_valo_fin_ult1': 'float16', 'ind_reca_fin_ult1': 'float16', 'ind_ctju_fin_ult1': 'float16', 'ind_cder_fin_ult1': 'float16', 'ind_plan_fin_ult1': 'float16', 'ind_fond_fin_ult1': 'float16', 'ind_hip_fin_ult1': 'float16', 'ind_pres_fin_ult1': 'float16', 'ind_nomina_ult1': 'float16', 'ind_cno_fin_ult1': 'float16', 'ncodpers': 'int64', 'ind_ctpp_fin_ult1': 'float16', 'ind_ahor_fin_ult1': 'float16', 'ind_dela_fin_ult1': 'float16', 'ind_ecue_fin_ult1': 'float16', 'ind_nom_pens_ult1': 'float16', 'ind_recibo_ult1': 'float16', 'ind_deco_fin_ult1': 'float16', 'ind_tjcr_fin_ult1': 'float16', 'ind_ctop_fin_ult1': 'float16', 'ind_viv_fin_ult1': 'float16', 'ind_ctma_fin_ult1': 'float16', 'conyuemp': str}
 
 # target columns to predict #
 target_cols = ['ind_ahor_fin_ult1','ind_aval_fin_ult1','ind_cco_fin_ult1','ind_cder_fin_ult1','ind_cno_fin_ult1','ind_ctju_fin_ult1','ind_ctma_fin_ult1','ind_ctop_fin_ult1','ind_ctpp_fin_ult1','ind_deco_fin_ult1','ind_deme_fin_ult1','ind_dela_fin_ult1','ind_ecue_fin_ult1','ind_fond_fin_ult1','ind_hip_fin_ult1','ind_plan_fin_ult1','ind_pres_fin_ult1','ind_reca_fin_ult1','ind_tjcr_fin_ult1','ind_valo_fin_ult1','ind_viv_fin_ult1','ind_nomina_ult1','ind_nom_pens_ult1','ind_recibo_ult1']
@@ -58,7 +61,8 @@ cols_to_use = mapping_dict.keys()
 # hsieh add
 hsieh_cols = ['ncodpers']
 #time_cols = ['fecha_dato','fecha_alta','ult_fec_cli_1t']
-time_cols = ['fecha_alta', 'ult_fec_cli_1t']
+#time_cols = ['fecha_alta', 'ult_fec_cli_1t']
+time_cols = ['fecha_alta']
 
 total_use_cols = cols_to_use+numerical_cols+hsieh_cols+time_cols
 #total_use_cols = cols_to_use+numerical_cols
@@ -79,16 +83,21 @@ def myloadData(filepath, dtype_list, mapping_dict):
     # fix continuous column
     data.antiguedad = pd.to_numeric(data.antiguedad,errors="coerce")
     data.age = pd.to_numeric(data.age,errors="coerce")
+    # transform renta
+    for rent_keys in renta_dict.keys():
+        data.loc[(data.nomprov == rent_keys) & (data.renta.isnull()),["renta"]] = renta_dict[rent_keys]
     data.renta = pd.to_numeric(data.renta,errors="coerce")
-    data[numerical_cols] = data[numerical_cols].apply(lambda x: (x - x.mean())/(x.std(ddof=0)) )
-    data[numerical_cols].fillna(data[numerical_cols].mean())
+    data.renta = data.renta.fillna(renta_dict['UNKNOWN'])
+    data.age = data.age.fillna(40) # mean_age
+    data.antiguedad = data.antiguedad.fillna(0) # mean_antiguedad
+    data[numerical_cols] = data[numerical_cols].apply(lambda x: (x - x.mean())/(x.max() - x.min()) )
     # fix missing value
-    data.loc[data["ult_fec_cli_1t"].isnull()==True, "ult_fec_cli_1t"] = data["ult_fec_cli_1t"].mode()[0]
+    #data.loc[data["ult_fec_cli_1t"].isnull()==True, "ult_fec_cli_1t"] = data["ult_fec_cli_1t"].mode()[0]
     
     # tran time columns
     data["fecha_alta"] = data["fecha_alta"].apply(timestrToStamp)
     #data["fecha_dato"] = data["fecha_dato"].apply(timestrToStamp)
-    data["ult_fec_cli_1t"] = data["ult_fec_cli_1t"].apply(timestrToStamp)
+    #data["ult_fec_cli_1t"] = data["ult_fec_cli_1t"].apply(timestrToStamp)
     data[time_cols] = data[time_cols].apply(lambda x: ( x - x.mean() )/( x.std(ddof=0) ) )
     
     # categorical value
@@ -102,7 +111,9 @@ def myloadData(filepath, dtype_list, mapping_dict):
     data_train = data_train.astype('float32')
     label_train = label_train.astype('int')
 
-    print data[numerical_cols].isnull().values.any()
+    print data[total_use_cols].isnull().any()
+    print "Still null cols ", sum(data[total_use_cols].isnull().any())
+    print label_df.isnull().any()
     #print len(np.unique(data['ncodpers'].values))
     #print len(data_train)
     del data
