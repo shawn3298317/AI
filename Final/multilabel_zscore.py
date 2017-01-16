@@ -102,7 +102,7 @@ def myloadData(filepath, dtype_list, mapping_dict):
     #data["fecha_dato"] = data["fecha_dato"].apply(timestrToStamp)
     data["fecha_alta"] = data["fecha_alta"].apply(getMonth)
     data["fecha_dato"] = data["fecha_dato"].apply(getMonth)
-    data[time_cols] = data[time_cols].apply(lambda x: ( x - x.mean() )/( x.std(ddof=0) ) )
+    #data[time_cols] = data[time_cols].apply(lambda x: ( x - x.mean() )/( x.std(ddof=0) ) )
     
     # categorical value
     for col_ind, col in enumerate(cols_to_use):
@@ -115,11 +115,10 @@ def myloadData(filepath, dtype_list, mapping_dict):
     data_train = data_train.astype('float32')
     label_train = label_train.astype('int')
 
-    print data[total_use_cols].isnull().any()
+    #print data[total_use_cols].isnull().any()
     print "Still null cols ", sum(data[total_use_cols].isnull().any())
-    print label_df.isnull().any()
+    #print label_df.isnull().any()
     #print len(np.unique(data['ncodpers'].values))
-    #print len(data_train)
     del data
     print "Processing done"
     return data_train, label_train
@@ -152,28 +151,76 @@ def lessIsMore(data_old, label_old, data_new, label_new):
                 new_buy_label.append(buy)
     new_buy_data = np.array(new_buy_data)
     new_buy_label = np.array(new_buy_label)
-    print "Less is More finished..."
     print "Total buy cus : ", len(np.unique(new_buy_data[:,ncodpers_pos]))
     print "Total buy product : ", len(new_buy_label)
+    print "Less is More finished..."
     return new_buy_data, new_buy_label
 
-data_1, label_1 = myloadData("./data/month5.csv", dtype_list, mapping_dict)
-data_2, label_2 = myloadData("./data/month6.csv", dtype_list, mapping_dict)
+#
+def loadPrevLabels(filepath, dtype_list):
+    print "Loading prev label from ", filepath
+    data = pd.read_csv(filepath, dtype = dtype_list)
+    data = data[ data["fecha_alta"].isnull()==False ]
+    # only get ncodpers
+    data_train = data['ncodpers'].values.astype('int')
+    label_train = data[target_cols].fillna(0).values.astype('int')
 
-new_data, new_label = lessIsMore(data_1, label_1, data_2, label_2)
+    print 'Ncodpers null: ', data["ncodpers"].isnull().any()
+    print "Total buy cus : ", len(np.unique(data_train[:]))
+    del data
+    return data_train, label_train
 
-del data_1, label_1, data_2, label_2
+# add prev month products
+def addPrevProducts(data_new, oldpers, label_old):
+    print "Add prev products..."
+    ncodpers_pos = len(cols_to_use)+len(numerical_cols)
+    cus_id = data_new[:, ncodpers_pos]
+    # old at first col
+    old_cus_id = set(oldpers[:])
+    old_cus_dict = dict( (x, k) for (k, x) in enumerate(oldpers[:]) )
+    new_data = []
+    for i, cus in enumerate(cus_id):
+        if cus in old_cus_id:
+            prev_products = label_old[old_cus_dict[cus], :]
+            new_data.append( np.append(data_new[i,:], prev_products) )
+        else:
+            new_data.append( np.append(data_new[i,:], [0]*len(target_cols) ) )
+    new_data = np.array(new_data)
+    print "Add finished"
+    print "Total buy cus : ", len(np.unique(new_data[:,ncodpers_pos]))
+    return new_data
+
+data_5, label_5 = myloadData("./data/month5.csv", dtype_list, mapping_dict)
+data_6, label_6 = myloadData("./data/month6.csv", dtype_list, mapping_dict)
+new_data, new_label = lessIsMore(data_5, label_5, data_6, label_6)
+del data_5, label_5, data_6, label_6
+
+data_4, label_4 = loadPrevLabels("./data/month4.csv", dtype_list)
+new_data = addPrevProducts(new_data, data_4, label_4)
+del data_4, label_4
+
+data_3, label_3 = loadPrevLabels("./data/month3.csv", dtype_list)
+new_data = addPrevProducts(new_data, data_3, label_3)
+del data_3, label_3
+
+data_2, label_2 = loadPrevLabels("./data/month2.csv", dtype_list)
+new_data = addPrevProducts(new_data, data_2, label_2)
+del data_2, label_2
+
+data_1, label_1 = loadPrevLabels("./data/month1.csv", dtype_list)
+new_data = addPrevProducts(new_data, data_1, label_1)
+del data_1, label_1
 
 #Model
 xgb_params = {
     'seed': 0,
-    'colsample_bytree': 0.9,
+    'colsample_bytree': 0.8,
     'silent': 1,
-    'subsample': 0.85,
+    'subsample': 0.9,
     'learning_rate': 0.1,
     'objective': 'multi:softprob',
-    'max_depth': 6,
-    'min_child_weight': 12,
+    #'max_depth': 8,
+    #'min_child_weight': 12,
     'booster': 'gbtree',
     'eval_metric': 'mlogloss',
     'n_thread': 8,
@@ -185,7 +232,7 @@ print xgb_params
 print 'Num rounds ', num_round
 
 scores = []
-skf = KFold(n_splits=10)
+skf = KFold(n_splits=3)
 for train_index, val_index in skf.split(new_data, new_label):
     # cross-valid
     y_train, y_val  = new_label[train_index], new_label[val_index]
@@ -205,8 +252,9 @@ for train_index, val_index in skf.split(new_data, new_label):
 print 'Average score ', np.mean(scores)
 '''
 dtotal = xgb.DMatrix(new_data, label=new_label)
-bst = xgb.train(xgb_params, dtotal, num_round)
+watchlist = [(dtotal,'train')]
+bst = xgb.train(xgb_params, dtotal, num_round, watchlist)
 print 'Score ', float(bst.eval(dtotal).split(':')[1])
-out_file = './model/XGBmodel_lessIsMore_1220_1132'
+out_file = './model/XGBmodel_lessIsMore_1222_0236addall'
 bst.save_model(out_file)
 '''
